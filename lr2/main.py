@@ -136,6 +136,11 @@ class Lexer:
                 self.pos += len(value)
                 continue
 
+            if self.text[self.pos] == ',':
+                self.tokens.append(Token(TokenType.SEP, ',', self.pos))
+                self.pos += 1
+                continue
+
             raise SyntaxError(f"Неизвестный символ '{self.text[self.pos]}' в позиции {self.pos}")
 
         self.tokens.append(Token(TokenType.END, '', self.pos))
@@ -247,9 +252,9 @@ class Parser:
         # { <sep><object_group> }*
         additional_groups = []
         while self.peek().type in (TokenType.SEP):
-            conj_token = self.consume()
+            self.consume()
             next_spec = self.parse_object_spec()
-            additional_groups.append((conj_token.value, next_spec))
+            additional_groups.append(next_spec)
 
         if self.peek().type != TokenType.END:
             raise ParserError("Ожидался конец строки, но есть лишние токены", self.peek())
@@ -277,7 +282,7 @@ class Parser:
             filters.append(self.parse_filter())
 
             while self.peek().type in (TokenType.AND, TokenType.OR):
-                self.consume()  # съедаем союз
+                conj_token = self.consume()
                 filters.append(self.parse_filter())
 
         return ObjectSpecNode(object_type, filters)
