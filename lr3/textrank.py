@@ -1,4 +1,5 @@
 import math
+import re
 from preprocessing import split_sentences, tokenize, get_word_idf, calculate_sentence_tfidf_scores
 
 class TextRankSummarizer:
@@ -71,6 +72,9 @@ class TextRankSummarizer:
     def summarize(self, text):
         """Основной метод суммаризации"""
         sentences = split_sentences(text)
+        sentences = [s for s in sentences if 25 <= len(s) <= 300]
+        dateline_pattern = re.compile(r'^[А-Яа-яЁё]+\s*,\s*\d+\s+[а-яА-ЯЁё]+')
+        sentences = [s for s in sentences if not dateline_pattern.match(s)]
         if not sentences:
             return ""
 
@@ -100,12 +104,15 @@ class TextRankSummarizer:
         # Позиционный бонус
         for i in range(len(final_scores)):
             if i == 0:
-                final_scores[i] *= 1.5 # Первое предложение +50%
+                final_scores[i] *= 2
+            elif i == 1:
+                final_scores[i] *= 1.5
+            elif i == 2:
+                final_scores[i] *= 1.2
+            elif i >= len(final_scores) - 2:
+                final_scores[i] *= 1.1
             elif i == len(final_scores) - 1:
-                final_scores[i] *= 1.2 # Последнее +20%
-            elif i < 3:
-                final_scores[i] *= 1.1 # Первые три +10%
-
+                final_scores[i] *= 1.5
         # Сначала отбираем топ-N по важности
         top_n = sorted(
             [(i, sentences[i], score) for i, score in enumerate(final_scores)],
@@ -119,6 +126,13 @@ class TextRankSummarizer:
         # Сборка реферата с ограничением по символам
         summary = []
         current_length = 0
+
+        # Принудительное включение первого предложения повышает оценки
+        if sentences:
+            first_sent = sentences[0]
+            if len(first_sent) <= self.limit:
+                summary.append(first_sent)
+                current_length = len(first_sent)
 
         for idx, original_text, score in ranked_sentences:
             # +1 на пробел между предложениями
