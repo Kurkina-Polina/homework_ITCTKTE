@@ -39,7 +39,7 @@ def tokenize(text, custom_stopwords=None):
             processed_words.append(morph.parse(w)[0].normal_form)
 
     # Фильтруем стоп-слова и слишком короткие слова
-    return [w for w in words if w not in stop_words and len(w) > 2]
+    return processed_words
 
 def get_word_idf(sentences_tokens):
     """
@@ -63,3 +63,30 @@ def get_word_idf(sentences_tokens):
         idf[word] = math.log((n_docs + 1) / (df + 1)) + 1
 
     return idf
+
+def calculate_sentence_tfidf_scores(sentences_tokens, idf_weights):
+    """
+    Рассчитывает TF-IDF score для каждого предложения.
+    Формула: Σ (count(w)/|s|) * IDF(w) * (|s|**0.5)
+    """
+    scores = []
+    for tokens in sentences_tokens:
+        if len(tokens) == 0:
+            scores.append(0.0)
+            continue
+
+        # TF: частота слова в предложении
+        word_freq = {}
+        for word in tokens:
+            word_freq[word] = word_freq.get(word, 0) + 1
+
+        # Сумма TF-IDF для всех слов
+        tfidf_sum = 0.0
+        for word, count in word_freq.items():
+            tf = count / len(tokens)
+            idf = idf_weights.get(word, 1.0)
+            tfidf_sum += tf * idf * (len(tokens)**0.5)
+
+        scores.append(tfidf_sum)
+
+    return scores

@@ -1,11 +1,13 @@
 import math
-from preprocessing import split_sentences, tokenize, get_word_idf
+from preprocessing import split_sentences, tokenize, get_word_idf, calculate_sentence_tfidf_scores
 
 class TextRankSummarizer:
     def __init__(self, limit=300):
         self.limit = limit
         self.damping = 0.85
         self.iterations = 20
+        self.tfidf_weight = 0.5
+        self.pagerank_weight = 0.5
 
     def _sentence_similarity(self, sent1, sent2, idf_weights):
         """ Вычисляет сходство двух предложений. """
@@ -59,6 +61,13 @@ class TextRankSummarizer:
 
         return ranks
 
+    def _normalize_scores(self, scores):
+        """Нормализует_scores в диапазон [0, 1] для комбинации"""
+        if not scores or max(scores) == 0:
+            return scores
+        max_score = max(scores)
+        return [s / max_score for s in scores]
+
     def summarize(self, text):
         """Основной метод суммаризации"""
         sentences = split_sentences(text)
@@ -68,28 +77,44 @@ class TextRankSummarizer:
         # Токенизируем
         sentences_tokens = [tokenize(s) for s in sentences]
 
-        # Вычисляем IDF веса для всего документа ---
+        # Вычисляем IDF веса для всего текста
         idf_weights = get_word_idf(sentences_tokens)
+
+        #  Считаем TF-IDF для каждого предложения
+        tfidf_scores = calculate_sentence_tfidf_scores(sentences_tokens, idf_weights)
+
 
         # Строим граф с учетом TF-IDF
         matrix = self._build_graph(sentences_tokens, idf_weights)
-        scores = self._pagerank(matrix)
+        pagerank_scores = self._pagerank(matrix)
+
+        tfidf_norm = self._normalize_scores(tfidf_scores)
+        pagerank_norm = self._normalize_scores(pagerank_scores)
+
+        # Комбинируем TF-IDF + PageRank
+        final_scores = [
+            self.tfidf_weight * t + self.pagerank_weight * p
+            for t, p in zip(tfidf_norm, pagerank_norm)
+        ]
 
         # Позиционный бонус
-        for i in range(len(scores)):
+        for i in range(len(final_scores)):
             if i == 0:
-                scores[i] *= 1.5  # Первое предложение +50%
-            elif i == len(scores) - 1:
-                scores[i] *= 1.2  # Последнее +20%
+                final_scores[i] *= 1.5 # Первое предложение +50%
+            elif i == len(final_scores) - 1:
+                final_scores[i] *= 1.2 # Последнее +20%
             elif i < 3:
-                scores[i] *= 1.1  # Первые три +10%
+                final_scores[i] *= 1.1 # Первые три +10%
 
-        # Сортировка предложений по важности
-        ranked_sentences = sorted(
-            [(i, sentences[i], score) for i, score in enumerate(scores)],
-            key=lambda x: x[2] / math.sqrt(len(x[1]) + 1), # жадный отбор
+        # Сначала отбираем топ-N по важности
+        top_n = sorted(
+            [(i, sentences[i], score) for i, score in enumerate(final_scores)],
+            key=lambda x: x[2],
             reverse=True
         )
+
+        # Затем сортируем отобранные по исходному порядку (по индексу i)
+        ranked_sentences = sorted(top_n, key=lambda x: x[0])
 
         # Сборка реферата с ограничением по символам
         summary = []
