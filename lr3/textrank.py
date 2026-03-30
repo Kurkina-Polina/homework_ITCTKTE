@@ -1,5 +1,5 @@
 import math
-from preprocessing import split_sentences, tokenize
+from preprocessing import split_sentences, tokenize, get_word_idf
 
 class TextRankSummarizer:
     def __init__(self, limit=300):
@@ -7,21 +7,28 @@ class TextRankSummarizer:
         self.damping = 0.85
         self.iterations = 20
 
-    def _sentence_similarity(self, sent1, sent2):
-        """Вычисляет сходство двух предложений"""
+    def _sentence_similarity(self, sent1, sent2, idf_weights):
+        """ Вычисляет сходство двух предложений. """
         if not sent1 or not sent2:
             return 0.0
 
+        # Находим общие слова
         intersection = set(sent1).intersection(set(sent2))
 
         if len(intersection) == 0:
             return 0.0
 
-        # Формула сходства (нормализация по длине)
-        return len(intersection) / (len(sent1) + len(sent2))
+        # Сумма весов общих слов (чем реже слово, тем выше вес)
+        weighted_intersection = sum(idf_weights.get(word, 1.0) for word in intersection)
 
-    def _build_graph(self, sentences_tokens):
-        """Создает матрицу сходства"""
+        # Нормализуем на общую длину предложений
+        # Можно также взвешивать длину, но базовая версия работает хорошо
+        normalization = len(sent1) + len(sent2)
+
+        return weighted_intersection / normalization
+
+    def _build_graph(self, sentences_tokens, idf_weights):
+        """Создает матрицу сходства между предложениями"""
         n = len(sentences_tokens)
         matrix = [[0.0] * n for _ in range(n)]
 
@@ -29,11 +36,15 @@ class TextRankSummarizer:
             for j in range(n):
                 if i == j:
                     continue
-                matrix[i][j] = self._sentence_similarity(sentences_tokens[i], sentences_tokens[j])
+                matrix[i][j] = self._sentence_similarity(
+                    sentences_tokens[i],
+                    sentences_tokens[j],
+                    idf_weights
+                )
         return matrix
 
     def _pagerank(self, matrix):
-        """Алгоритм PageRank"""
+        """Алгоритм PageRank для ранжирования узлов графа"""
         n = len(matrix)
         if n == 0: return []
 
@@ -54,12 +65,17 @@ class TextRankSummarizer:
         if not sentences:
             return ""
 
-        # Токенизация (стоп-слова уже внутри функции tokenize)
+        # Токенизируем
         sentences_tokens = [tokenize(s) for s in sentences]
 
-        matrix = self._build_graph(sentences_tokens)
+        # Вычисляем IDF веса для всего документа ---
+        idf_weights = get_word_idf(sentences_tokens)
+
+        # Строим граф с учетом TF-IDF
+        matrix = self._build_graph(sentences_tokens, idf_weights)
         scores = self._pagerank(matrix)
 
+        # Позиционный бонус
         for i in range(len(scores)):
             if i == 0:
                 scores[i] *= 1.5  # Первое предложение +50%
@@ -71,7 +87,7 @@ class TextRankSummarizer:
         # Сортировка предложений по важности
         ranked_sentences = sorted(
             [(i, sentences[i], score) for i, score in enumerate(scores)],
-            key=lambda x: x[2],
+            key=lambda x: x[2] / math.sqrt(len(x[1]) + 1), # жадный отбор
             reverse=True
         )
 

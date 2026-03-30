@@ -1,6 +1,7 @@
 import re
 import string
 import nltk
+import math
 from nltk.corpus import stopwords
 import pymorphy3
 morph = pymorphy3.MorphAnalyzer()
@@ -39,3 +40,26 @@ def tokenize(text, custom_stopwords=None):
 
     # Фильтруем стоп-слова и слишком короткие слова
     return [w for w in words if w not in stop_words and len(w) > 2]
+
+def get_word_idf(sentences_tokens):
+    """
+    Вычисляет IDF для каждого слова среди всех предложений.
+    IDF = log(N / df), где N - всего предложений, df - в скольких предложениях встречается слово
+    """
+    n_docs = len(sentences_tokens)
+    if n_docs == 0:
+        return {}
+
+    # В скольких предложениях встречается каждое слово
+    word_doc_freq = {}
+    for tokens in sentences_tokens:
+        unique_words = set(tokens)
+        for word in unique_words:
+            word_doc_freq[word] = word_doc_freq.get(word, 0) + 1
+
+    # Вычисляем IDF с лапласовским сглаживанием (+1 для предотвращения деления на ноль)
+    idf = {}
+    for word, df in word_doc_freq.items():
+        idf[word] = math.log((n_docs + 1) / (df + 1)) + 1
+
+    return idf
