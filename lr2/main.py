@@ -216,6 +216,26 @@ class YearFilterNode(Node):
     def __repr__(self, level=0):
         return "  " * level + f"YearFilter: {self.relation} {self.year}"
 
+class ConjunctionNode(Node):
+    """Оператор связи: имеет левого и правого ребёнка"""
+    def __init__(self, conjunction: str, left: Node, right: Node):
+        super().__init__()
+        self.conjunction = conjunction  # "и" или "или"
+        self.left = left
+        self.right = right
+
+    def get_label(self) -> str:
+        return f"Conj: {self.conjunction}"
+
+    def get_children(self) -> List[Node]:
+        return [self.left, self.right]  # ← ДЕТИ!
+
+    def __repr__(self, level=0):
+        lines = ["  " * level + f"Conjunction: {self.conjunction}"]
+        lines.append(self.left.__repr__(level + 1))
+        lines.append(self.right.__repr__(level + 1))
+        return '\n'.join(lines)
+
 class ParserError(Exception):
     def __init__(self, message: str, token: Token):
         self.message = message

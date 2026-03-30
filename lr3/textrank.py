@@ -60,6 +60,14 @@ class TextRankSummarizer:
         matrix = self._build_graph(sentences_tokens)
         scores = self._pagerank(matrix)
 
+        for i in range(len(scores)):
+            if i == 0:
+                scores[i] *= 1.5  # Первое предложение +50%
+            elif i == len(scores) - 1:
+                scores[i] *= 1.2  # Последнее +20%
+            elif i < 3:
+                scores[i] *= 1.1  # Первые три +10%
+
         # Сортировка предложений по важности
         ranked_sentences = sorted(
             [(i, sentences[i], score) for i, score in enumerate(scores)],
