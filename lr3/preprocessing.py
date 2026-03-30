@@ -85,7 +85,7 @@ def calculate_sentence_tfidf_scores(sentences_tokens, idf_weights):
         for word, count in word_freq.items():
             tf = count / len(tokens)
             idf = idf_weights.get(word, 1.0)
-            tfidf_sum += tf * idf * (len(tokens)**0.5)
+            tfidf_sum += tf * idf
 
         scores.append(tfidf_sum)
 
