@@ -1,16 +1,27 @@
+import re
+import pymorphy3
 from rouge_score import rouge_scorer
 
+morph = pymorphy3.MorphAnalyzer()
+
+class Tokenizer:
+    @staticmethod
+    def tokenize(text: str) -> list:
+        """Корректная токенизация русского текста с лемматизацией"""
+        words = re.findall(r'\w+', text.lower())
+        return [morph.parse(w)[0].normal_form for w in words if len(w) > 2]
+
 def calculate_rouge(candidates, references):
-    """
-    candidates: список рефератов от алгоритма
-    references: список эталонных рефератов (из датасета)
-    """
-    scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+    scorer = rouge_scorer.RougeScorer(
+        ['rouge1', 'rouge2', 'rougeL'],
+        use_stemmer=False,
+        tokenizer=Tokenizer
+    )
 
     avg_scores = {'rouge1': 0, 'rouge2': 0, 'rougeL': 0}
 
     for cand, ref in zip(candidates, references):
-        scores = scorer.score(ref, cand) # Важно: сначала эталон, потом кандидат
+        scores = scorer.score(ref, cand)
         for key in avg_scores:
             avg_scores[key] += scores[key].fmeasure
 

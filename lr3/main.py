@@ -6,7 +6,7 @@ def main():
     # Переключатель режима:
     # True - запустить тест на датасете с оценкой ROUGE
     # False - запустить режим сдачи
-    TEST_MODE = True
+    TEST_MODE = False
 
     summarizer = TextRankSummarizer(limit=300)
 
@@ -28,13 +28,15 @@ def main():
         print_evaluation(scores)
 
     else:
-        # Режим для сдачи задания
-        input_texts = [
-            "Первый текст...",
-            "Второй текст..."
-        ]
-        results = [summarizer.summarize(t) for t in input_texts]
-        print(results)
+        # Интерактивный режим
+        input_text = input("Введите текст для суммаризации:\n\n")
+
+        summarizer = TextRankSummarizer(limit=300)
+        summary = summarizer.summarize(input_text)
+
+        print("\n--- Реферат ---")
+        print(summary)
+        print(f"\nДлина: {len(summary)} символов")
 
 if __name__ == "__main__":
     main()

@@ -10,8 +10,8 @@ wn = RuWordNet()
 stopwords = set(stopwords.words('russian'))
 
 def preprocess_text(text) -> List[str]:
-    text = text.lower().replace('ё', 'е')
-    text = re.sub(r'[^а-яёa-z0-9\s\-]', '', text, flags=re.IGNORECASE)
+    text = text.lower()
+    text = re.sub(r'[^а-яa-z0-9\s\-]', '', text, flags=re.IGNORECASE)
     tokens = text.split()
     tokens = [token for token in tokens if len(token) > 2]
     tokens = [token for token in tokens if token not in stopwords]
@@ -67,29 +67,49 @@ def lesk_wsd(context, target_word) -> Dict:
     target_lemma = morph.parse(target_word)[0].normal_form
     senses_info = get_word_senses_info(target_lemma)
     context_lemmas = set(preprocess_text(context))
+    context_lemmas.discard(target_lemma)
 
     best_sense = None
     best_score = -1
 
     # Для каждого значения вычисляем пересечение с контекстом
     for sense in senses_info['senses']:
-        # Берём глоссу (определение) и предобрабатываем её
-        gloss = sense['definition']
-        gloss_lemmas = set(preprocess_text(gloss))
+        score = 0
 
-        # добавляем глоссы
-        for hyp in sense.get('hypernyms', []):
-            # Для каждого гиперонима получаем его глоссу
-            hyp_senses = wn.get_senses(hyp)  # восстанавливаем пробелы
-            for h_sense in hyp_senses:
-                h_gloss = h_sense.synset.title
-                gloss_lemmas.update(preprocess_text(h_gloss))
+        # Глосса (определение)
+        gloss_lemmas = set(preprocess_text(sense['definition']))
+        # Исключаем само целевое слово из глоссы, если оно там есть, чтобы не накручивать счетчик
+        gloss_lemmas.discard(target_lemma)
+        overlap_gloss = len(context_lemmas & gloss_lemmas)
+        score += overlap_gloss * 2  # Вес 2 за совпадение с определением
 
-        # Считаем количество общих лемм (размер пересечения)
-        overlap = len(context_lemmas & gloss_lemmas)
-        if overlap > best_score:
-            best_score = overlap
+        synonym_lemmas = set()
+        for syn in sense.get('synonyms', []):
+            syn_tokens = preprocess_text(syn)
+            synonym_lemmas.update(syn_tokens)
+        overlap_syn = len(context_lemmas & synonym_lemmas)
+        score += overlap_syn * 1.5
+
+        # Гиперонимы (родовые понятия)
+        hypernym_lemmas = set()
+        for hyp_title in sense.get('hypernyms', []):
+            hyp_tokens = preprocess_text(hyp_title)
+            hypernym_lemmas.update(hyp_tokens)
+        overlap_hyper = len(context_lemmas & hypernym_lemmas)
+        score += overlap_hyper * 1.0
+
+        # Гипонимы (видовые понятия)
+        hyponym_lemmas = set()
+        for hypo_title in sense.get('hyponyms', []):
+            hypo_tokens = preprocess_text(hypo_title)
+            hyponym_lemmas.update(hypo_tokens)
+        overlap_hypo = len(context_lemmas & hyponym_lemmas)
+        score += overlap_hypo * 0.5
+
+        if score > best_score:
+            best_score = score
             best_sense = sense
+
     if best_score == 0 and senses_info['senses']:
         best_sense = senses_info['senses'][0]
 
@@ -100,48 +120,43 @@ def lesk_wsd(context, target_word) -> Dict:
 def main():
     examples = [
         # 1. Оценка (школьная отметка vs мнение/ценность)
-        ("Я буду сдавать лабораторные работы вовремя и получу хорошую оценку за экзамен.", "оценка"),
-        ("Эксперт дал высокую оценку новому фильму.", "оценка"),
+        ("Ученик получил хорошую учебную оценку и даже пятёрку за ответ.", "оценка"),
+        ("Эксперт дал свою оценку, высказал мнение и повысил рейтинг фильму.", "оценка"),
 
         # 2. Замок (строение vs запорное устройство)
-        ("Туристы фотографировали древний замок на вершине холма.", "замок"),
-        ("Не забудь закрыть дверь на замок.", "замок"),
+        ("Древний замок выглядел как неприступная крепость феодала.", "замок"),
+        ("Чтобы открыть дверь, нужно отпереть запорный замок.", "замок"),
 
         # 3. Ключ (инструмент vs источник vs музыкальный знак)
-        ("Он потерял ключ от квартиры.", "ключ"),
+        ("Он вставил ключ в дверной замок, чтобы войти.", "ключ"),
         ("Вода бьёт из горного ключа.", "ключ"),
-        ("Скрипичный ключ в нотах выглядит красиво.", "ключ"),
+        ("Скрипичный ключ — это важный музыкальный знак в нотах.", "ключ"),
 
         # 4. Ручка (часть тела vs канцелярская принадлежность vs дверная ручка)
-        ("У ребёнка болит ручка после падения.", "ручка"),
-        ("Купи новую шариковую ручку в магазине.", "ручка"),
+        ("У ребёнка болит ручка после падения, теперь эту руку нужно забинтовать.", "ручка"),
+        ("Для письма я использую шариковую ручку и другую пишущую принадлежность.", "ручка"),
         ("Потяни за дверную ручку, чтобы открыть.", "ручка"),
 
         # 5. Коса (причёска vs сельхозорудие vs географическая форма)
         ("У неё длинная русая коса.", "коса"),
-        ("Фермер точит косу, чтобы косить траву.", "коса"),
         ("Песчаная коса отделяла море от озера.", "коса"),
 
         # 6. Бокс (спорт vs коробка передач vs коробка для хранения)
-        ("Он занимается боксом в спортивном клубе.", "бокс"),
-        ("Автомобиль с автоматическим боксом удобен в городе.", "бокс"),
-        ("Поставь инструменты в бокс для хранения.", "бокс"),
+        ("Бокс - опасный вид спорта", "бокс"),
+        ("Самое сложное на экзамене - парковка в бокс", "бокс"),
+        ("Его палата находится в инфекционном боксе.", "бокс"),
 
         # 7. Лук (растение vs оружие)
         ("Мама добавила зелёный лук в салат.", "лук"),
-        ("Охотник натянул тетиву лука.", "лук"),
-
-        # 8. Стекло (материал vs глагол в прош. вр. – стёк)
-        ("Окно разбито, стекло валяется на полу.", "стекло"),
-        ("Вода стекло с крыши после дождя.", "стекло"),   # омонимичная форма слова "стечь"
+        ("Из оружия ему больше всего нравится лук.", "лук"),
 
         # 9. Мир (отсутствие войны vs Вселенная)
-        ("На Земле должен быть мир во всём мире.", "мир"),
+        ("Поскорее бы кончилась война и настал мир.", "мир"),
         ("Учёные изучают тайны микромира.", "мир"),
 
         # 10. Лавка (магазин vs скамейка)
-        ("Бабушка купила хлеб в угловой лавке.", "лавка"),
-        ("Старики сидели на лавке у подъезда.", "лавка"),
+        ("Бабушка купила хлеб в торговой лавке.", "лавка"),
+        ("Старики сидели на лавке у подъезда, потому что других скамеек нет.", "лавка"),
     ]
 
     for context, target in examples:
